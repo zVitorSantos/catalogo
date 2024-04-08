@@ -1,101 +1,56 @@
-import pandas as pd
+# main.py
+from cloud import CloudinaryModule
+from catalogo import CatalogModule
+from json_save import JsonModule
+from fire import FirebaseModule
 import json
-from collections import Counter
 
-# Ler o arquivo .xlsx
-df = pd.read_excel(r'Catálogo.xlsx')
+# Create an instance of the CloudinaryModule class
+cloudinary_module = CloudinaryModule('cloudinary_config.json')
 
-# Extrair as colunas desejadas e renomear
-df = df[["REF.:", "DESCRIÇÃO DO PRODUTO", "MEDIDAS MM HxL", "MATERIAL", "PESO", "M.", "P.", "D."]]
-df.columns = ["ref", "descricao", "medidas", "material", "peso", "matriz", "piloto", "desenho"]
+# Get the resources using the get_resources method
+resources = cloudinary_module.get_resources()
 
-# Converter as medidas para altura e largura
-df["altura"] = df["medidas"].str.split("x").str[0]
-df["largura"] = df["medidas"].str.split("x").str[1]
+# Create a dictionary where the key is the image reference and the value is the image URL
+image_dict = {resource['public_id'].replace('catalogo/', ''): resource['url'] for resource in resources}
 
-# Converter os valores da coluna 'ref' para inteiros
-df['ref'] = pd.to_numeric(df['ref'], errors='coerce')  # 'coerce' para lidar com strings não numéricas
+# Create an instance of the CatalogModule class
+catalog_module = CatalogModule(r'Catálogo.xlsx')
 
-# Filtrar o DataFrame para incluir apenas produtos com referência menor ou igual a 5250
-df_filtrado = df[df['ref'] <= 5250].copy()  # Fazer uma cópia para evitar alterações no DataFrame original
+# Get the processed data
+data_final = catalog_module.data_final
 
-# Listas de palavras para cada prioridade
-prioridade_1 = ['bioluz', 'brilha', 'brilha natal', 'natal', 'sousplat', 'tdecorare']
-prioridade_2 = ['bridão', 'âmago', 'passador', 'fivela', 'ornavi', 'pingente', 'salomé', 'animais', 'tira']
-prioridade_3 = ['laço', 'flor', 'coração', 'botão', 'mandala', 'pedra']
-complementos = ['resina', 'strass']
-modelos = ['i', 't', 'y', 'v']
+# Get the processed DataFrame
+df_filtrado = catalog_module.df
 
-def buscar_palavras(descricao):
-    categorias = pd.Series({
-        "categoria_1": "",
-        "categoria_2": "",
-        "categoria_3": "",
-        "complementos": ""
-    })
-    
-    if isinstance(descricao, str):
-        descricao = descricao.lower()
-        
-        # Verificar complementos na descrição
-        complementos_encontrados = [complemento for complemento in complementos if complemento in descricao]
-        if complementos_encontrados:
-            categorias['complementos'] = ', '.join(complementos_encontrados).capitalize()
-        
-        # Verificar palavras de prioridade 1
-        for palavra in prioridade_1:
-            if palavra in descricao:
-                categorias['categoria_1'] = palavra.capitalize()
-                break  # Parar no primeiro match
-        
-        # Verificar palavras de prioridade 2
-        for palavra in prioridade_2:
-            if palavra in descricao:
-                if 'tira em' in descricao:
-                    for modelo in modelos:
-                        if f'tira em {modelo}' in descricao:
-                            categorias['categoria_2'] = f'Tira em {modelo.capitalize()}'
-                            return categorias
-                else:
-                    categorias['categoria_2'] = palavra.capitalize()
-                    break  # Parar no primeiro match
-        
-        # Verificar palavras de prioridade 3
-        prioridade_3_encontradas = [palavra for palavra in prioridade_3 if palavra in descricao]
-        if prioridade_3_encontradas:
-            if len(prioridade_3_encontradas) == 1:
-                categorias['categoria_2'] = prioridade_3_encontradas[0].capitalize()
-            else:
-                categorias['categoria_2'] = prioridade_3_encontradas[0].capitalize()
-                categorias['categoria_3'] = ', '.join(prioridade_3_encontradas[1:]).capitalize()
-    
-    return categorias
+# Convert the 'ref' column to string
+df_filtrado['ref'] = df_filtrado['ref'].astype(str)
 
-# Aplicar a função 'buscar_palavras' e armazenar o resultado nas colunas correspondentes
-categorias = df_filtrado['descricao'].apply(buscar_palavras)
-df_filtrado[['categoria_1', 'categoria_2', 'categoria_3', 'complementos']] = categorias
+# Add a new column to the DataFrame with the image URLs
+df_filtrado['imagem'] = df_filtrado['ref'].map(image_dict)
 
-# Substituir valores NaN por uma string vazia
-df_filtrado = df_filtrado.fillna('')
+# If there is no image for a certain item, the value in the 'imagem' column will be NaN.
+# You can replace these NaN values with an empty string like this:
+df_filtrado['imagem'] = df_filtrado['imagem'].fillna('')
 
-# Remover espaços no início e no fim das strings
-df_filtrado = df_filtrado.apply(lambda x: x.map(lambda y: y.strip() if isinstance(y, str) else y))
+# Create an instance of the JsonModule class
+json_module = JsonModule()
 
-# Considerar qualquer valor não vazio como True
-df_filtrado[['matriz', 'piloto', 'desenho']] = df_filtrado[['matriz', 'piloto', 'desenho']].apply(lambda x: x.map(lambda y: False if y == '' else True))
+# Save the DataFrame as a JSON file
+json_data = df_filtrado.to_dict(orient="records")
+json_module.save_json(json_data, 'Catalogo.json')
 
-# Adicionar a coluna 'valor' ao DataFrame
-df_filtrado['valor'] = ""
+# Create an instance of the FirebaseModule class
+firebase_module = FirebaseModule(
+    "fire_config.json",
+    "https://catalogo-93491-default-rtdb.firebaseio.com/"
+)
 
-# Converter os valores da coluna 'ref' para inteiros, ignorando os valores NaN
-df_filtrado['ref'] = df_filtrado['ref'].apply(lambda x: int(x) if pd.notnull(x) else x)
+# Transform the data so that the 'ref' key is used as the key for each object
+json_data = {item['ref']: item for item in json_data}
 
-# Converter o DataFrame filtrado para uma lista de dicionários mantendo a ordem das colunas
-data = df_filtrado[["ref", "descricao", "categoria_1", "categoria_2", "categoria_3", "complementos", "altura", "largura", "material", "peso", "valor", "matriz", "piloto", "desenho"]].to_dict(orient="records")
+# Delete the old data
+firebase_module.delete_data()
 
-# Criar o dicionário final para salvar como JSON
-data_final = {"produtos": data}
-
-# Salvar o dicionário como um arquivo JSON
-with open('Catalogo.json', 'w', encoding='utf-8') as file:
-    json.dump(data_final, file, ensure_ascii=False, indent=4)
+# Save the new data
+firebase_module.save_data_to_firebase(json_data)
