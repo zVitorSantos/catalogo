@@ -11,9 +11,16 @@ class CatalogModule:
         self.df = self.df[["REF.:", "DESCRIÇÃO", "MEDIDAS(A,L,C)", "MATERIAL", "PESO", "MATRIZ", "PILOTO", "DESENHO"]]
         self.df.columns = ["ref", "descricao", "medidas", "material", "peso", "matriz", "piloto", "desenho"]
 
-        # Converter as medidas para altura e largura
-        self.df["altura"] = self.df["medidas"].str.split("x").str[0]
-        self.df["largura"] = self.df["medidas"].str.split("x").str[1]
+        # Dividir as strings na coluna "medidas"
+        medidas_divididas = self.df["medidas"].str.split("x", expand=True)
+        
+        # Atribuir os resultados às colunas "altura", "largura" e "comprimento"
+        self.df["altura"] = pd.to_numeric(medidas_divididas[0].str.replace("mm", ""), errors='coerce')
+        self.df["largura"] = pd.to_numeric(medidas_divididas[1].str.replace("mm", ""), errors='coerce')
+        self.df["comprimento"] = pd.to_numeric(medidas_divididas[2].str.replace("mm", ""), errors='coerce')
+        
+        # Remover a coluna "medidas"
+        self.df = self.df.drop(columns=["medidas"])
 
         # Converter os valores da coluna 'ref' para inteiros
         self.df['ref'] = pd.to_numeric(self.df['ref'], errors='coerce')  # 'coerce' para lidar com strings não numéricas
@@ -44,7 +51,7 @@ class CatalogModule:
         self.df['ref'] = self.df['ref'].apply(lambda x: int(x) if pd.notnull(x) else x)
 
         # Converter o DataFrame filtrado para uma lista de dicionários mantendo a ordem das colunas
-        data = self.df[["ref", "imagem", "descricao", "categoria_1", "categoria_2", "categoria_3", "complementos", "altura", "largura", "material", "peso", "valor", "matriz", "piloto", "desenho"]].to_dict(orient="records")
+        data = self.df[["ref", "imagem", "descricao", "categoria_1", "categoria_2", "categoria_3", "complementos", "altura", "largura", "comprimento", "material", "peso", "valor", "matriz", "piloto", "desenho"]].to_dict(orient="records")
 
         # Criar o dicionário final para salvar como JSON
         self.data_final = {"produtos": data}

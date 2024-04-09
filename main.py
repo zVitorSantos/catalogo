@@ -36,7 +36,10 @@ df_filtrado['imagem'] = df_filtrado['imagem'].fillna('')
 # Create an instance of the JsonModule class
 json_module = JsonModule()
 
-# Save the DataFrame as a JSON file
+# Reorder the columns of the DataFrame
+df_filtrado = df_filtrado[["ref", "imagem", "descricao", "categoria_1", "categoria_2", "categoria_3", "material", "peso", "altura", "largura", "comprimento", "complementos", "valor", "matriz", "piloto", "desenho"]]
+
+# Convert the DataFrame to a dictionary
 json_data = df_filtrado.to_dict(orient="records")
 json_module.save_json(json_data, 'Catalogo.json')
 
